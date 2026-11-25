@@ -1,0 +1,734 @@
+<!doctype html>
+<!--
+  Architecture review page template (architecture skill).
+
+  How to use:
+  1. Copy this file. Replace every block marked FILL. Delete sections that don't apply
+     (e.g. "Migration" for a greenfield design), but keep Summary, Diagrams, Decisions,
+     and Your review.
+  2. Diagrams are Mermaid. Follow the conventions in references/diagrams.md:
+     node classes k-actor / k-service / k-store / k-queue / k-external / k-new / k-removed,
+     and subgraphs ONLY for trust boundaries or deployment zones.
+  3. Open it in a browser and look at it yourself before showing the user.
+
+  Design tokens were derived with frontend-design/scripts/design_math.py:
+    tokens --hue 200 --chroma 0.11 --neutral-chroma 0.008 --shape crisp --ratio 1.2
+  Mermaid loads from a CDN; the source text stays readable if offline.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FILL: System name architecture review</title>
+<style>
+  :root {
+    /* spacing: 4px unit */
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px; --s12: 48px; --s16: 64px;
+    /* type: 16 x 1.2^n, line-heights on the 4px grid */
+    --text-xs: 11px; --lh-xs: 16px;
+    --text-sm: 13px; --lh-sm: 20px;
+    --text-base: 16px; --lh-base: 24px;
+    --text-lg: 19px; --lh-lg: 28px;
+    --text-xl: 23px; --lh-xl: 28px;
+    --text-2xl: 28px; --lh-2xl: 36px;
+    /* shape: crisp. controls 32/40 -> radius 4/6; surface = min(2 x 6, 16) = 12 */
+    --control-sm: 32px; --control-md: 40px;
+    --r-control-sm: 4px; --r-control-md: 6px; --r-surface: 12px; --r-badge: 4px;
+    --focus-w: 2px; --focus-offset: 2px;
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+
+    /* color ramps (OKLCH-derived) */
+    --accent-50: #f0fdfe; --accent-100: #dffafb; --accent-200: #c1f1f3; --accent-500: #20acb3;
+    --accent-600: #008d93; --accent-700: #006e73; --accent-800: #005256; --accent-900: #00383b;
+    --neutral-50: #f9fafa; --neutral-100: #f2f4f4; --neutral-200: #e4e7e7; --neutral-300: #d0d5d5;
+    --neutral-400: #b2b9b9; --neutral-500: #939a9a; --neutral-600: #777d7e; --neutral-700: #5c6262;
+    --neutral-800: #444949; --neutral-900: #2d3131; --neutral-950: #191b1b;
+    --warn-600: #a66f00; --warn-100: #fff1df; --danger-600: #c5514c; --danger-100: #ffefee;
+    --ok-600: #498e4d; --ok-100: #e8f9e7;
+
+    /* roles, light (contrast-verified) */
+    --bg: var(--neutral-50);
+    --surface: #ffffff;
+    --surface-sunken: var(--neutral-100);
+    --border: var(--neutral-200);
+    --border-strong: var(--neutral-600);
+    --text: var(--neutral-950);
+    --text-muted: var(--neutral-700);
+    --accent: var(--accent-700);
+    --accent-hover: var(--accent-800);
+    --accent-tint: var(--accent-50);
+    --on-accent: #ffffff;
+    --focus: var(--accent-600);
+    --added: var(--ok-600); --added-tint: var(--ok-100);
+    --removed: var(--danger-600); --removed-tint: var(--danger-100);
+    --risk: var(--warn-600); --risk-tint: var(--warn-100);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: var(--neutral-950);
+      --surface: var(--neutral-900);
+      --surface-sunken: #121414;
+      --border: var(--neutral-800);
+      --border-strong: var(--neutral-600);
+      --text: var(--neutral-50);
+      --text-muted: var(--neutral-500);
+      --accent: var(--accent-500);
+      --accent-hover: #5ccbd1;
+      --accent-tint: #0b2a2c;
+      --on-accent: var(--neutral-950);
+      --focus: var(--accent-600);
+      --added: #8aca8b; --added-tint: #13261a;
+      --removed: #ff958d; --removed-tint: #2e1716;
+      --risk: #e4ac59; --risk-tint: #2b2112;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: var(--text-base)/var(--lh-base) var(--font-ui);
+  }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:hover { color: var(--accent-hover); }
+  :focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: var(--focus-offset); }
+  code, .mono { font-family: var(--font-mono); font-size: 0.875em; }
+
+  .page { max-width: 1200px; margin: 0 auto; padding: var(--s8) var(--s4) var(--s16); }
+  @media (min-width: 768px) { .page { padding: var(--s12) var(--s6) var(--s16); } }
+  @media (min-width: 1024px) { .page { padding-inline: var(--s8); } }
+
+  /* header */
+  .masthead { display: grid; gap: var(--s2); padding-bottom: var(--s8); border-bottom: 1px solid var(--border); }
+  .eyebrow { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; }
+  h1 { font-size: var(--text-2xl); line-height: var(--lh-2xl); letter-spacing: -0.01em; font-weight: 600; margin: 0; }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 var(--s2);
+    border-radius: var(--r-badge); font-size: var(--text-xs); line-height: var(--lh-xs); font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase; background: var(--risk-tint); color: var(--risk);
+  }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* layout: sticky section nav + content */
+  .layout { display: grid; gap: var(--s8); padding-top: var(--s8); }
+  @media (min-width: 1024px) { .layout { grid-template-columns: 200px minmax(0, 1fr); gap: var(--s12); } }
+  .toc { display: none; }
+  @media (min-width: 1024px) {
+    .toc { display: block; position: sticky; top: var(--s6); align-self: start; }
+    .toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s1); }
+    .toc a {
+      display: flex; align-items: center; height: var(--control-sm); padding: 0 var(--s3);
+      border-radius: var(--r-control-sm); color: var(--text-muted); text-decoration: none;
+      font-size: var(--text-sm); line-height: var(--lh-sm);
+    }
+    .toc a:hover { background: var(--surface-sunken); color: var(--text); }
+  }
+
+  section { scroll-margin-top: var(--s6); }
+  section + section { margin-top: var(--s12); }
+  h2 { font-size: var(--text-xl); line-height: var(--lh-xl); font-weight: 600; margin: 0 0 var(--s2); }
+  h3 { font-size: var(--text-base); line-height: var(--lh-base); font-weight: 600; margin: 0 0 var(--s1); }
+  .lede { color: var(--text-muted); margin: 0 0 var(--s4); max-width: 70ch; }
+  p { margin: 0 0 var(--s3); max-width: 70ch; }
+
+  /* summary */
+  .summary {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-surface);
+    padding: var(--s6); display: grid; gap: var(--s4);
+  }
+  .summary .decision { font-size: var(--text-lg); line-height: var(--lh-lg); margin: 0; max-width: 70ch; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s4); margin: 0; }
+  .facts div { border-top: 1px solid var(--border); padding-top: var(--s3); }
+  .facts dt { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+  .facts dd { margin: 0; font-size: var(--text-lg); line-height: var(--lh-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* figures */
+  figure.diagram {
+    margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-surface);
+    overflow: hidden;
+  }
+  .fig-head {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+    min-height: 48px; padding: var(--s2) var(--s2) var(--s2) var(--s4); border-bottom: 1px solid var(--border);
+  }
+  .fig-head figcaption { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+  .fig-head figcaption strong { color: var(--text); font-weight: 600; }
+  .fig-body { padding: var(--s6) var(--s4); overflow-x: auto; text-align: center; }
+  .fig-body pre.mermaid { width: 100%; text-align: left; }
+  .fig-body pre.mermaid[data-processed] { text-align: center; }
+  .fig-body svg { max-width: 100%; height: auto; }
+  .render-error { text-align: left; color: var(--removed); font-size: var(--text-sm); line-height: var(--lh-sm); margin: 0 0 var(--s3); }
+  pre.mermaid { margin: 0; font-family: var(--font-mono); font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); white-space: pre; }
+  pre.mermaid[data-processed] { white-space: normal; }
+  .fig-note { max-width: none; margin: 0; padding: var(--s3) var(--s4); border-top: 1px solid var(--border); font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+  .stack { display: grid; gap: var(--s6); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: var(--control-sm); padding: 0 var(--s3); border-radius: var(--r-control-sm);
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    font: 500 var(--text-sm)/var(--lh-sm) var(--font-ui); cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface-sunken); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); height: var(--control-md); padding: 0 var(--s4); border-radius: var(--r-control-md); }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 0 var(--s4); padding: 0; list-style: none; font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+  .legend li { display: inline-flex; align-items: center; gap: var(--s2); }
+  .sw { width: 16px; height: 12px; border: 1.5px solid var(--border-strong); background: var(--surface); }
+  .sw.actor { border-radius: 6px; }
+  .sw.store { border-radius: 2px 2px 6px 6px / 2px 2px 4px 4px; }
+  .sw.external { border-style: dashed; }
+  .sw.new { border-color: var(--added); background: var(--added-tint); }
+  .sw.removed { border-color: var(--removed); background: var(--removed-tint); }
+  .sw.boundary { width: 24px; border: 1.5px dashed var(--risk); background: transparent; border-radius: 2px; }
+  .sw.async { width: 24px; height: 0; border: 0; border-top: 2px dashed var(--text-muted); }
+
+  /* options side by side */
+  .options { display: grid; gap: var(--s6); }
+  @media (min-width: 1024px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .option { display: flex; flex-direction: column; }
+  .option .fig-body { flex: 1; }
+  .option.recommended { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r-badge); font-size: var(--text-xs); line-height: var(--lh-xs); font-weight: 600; background: var(--accent-tint); color: var(--accent); }
+
+  /* tables */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-surface); overflow-x: auto; }
+  .table-wrap + h3 { margin-top: var(--s8); }
+  .lede + h3 { margin-top: var(--s4); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); line-height: var(--lh-sm); }
+  th, td { text-align: left; vertical-align: top; padding: 10px var(--s3); border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { padding-left: var(--s4); }
+  th:last-child, td:last-child { padding-right: var(--s4); }
+  tr:last-child td { border-bottom: 0; }
+  thead th { color: var(--text-muted); font-weight: 600; background: var(--surface-sunken); white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .win { color: var(--added); font-weight: 600; }
+  .lose { color: var(--removed); font-weight: 600; }
+
+  /* ADR cards */
+  .adr { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-surface); padding: var(--s6); }
+  .adr dl { margin: var(--s3) 0 0; display: grid; gap: var(--s3); }
+  @media (min-width: 768px) { .adr dl { grid-template-columns: 160px minmax(0, 1fr); gap: var(--s3) var(--s6); } }
+  .adr dt { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); font-weight: 600; padding-top: 2px; }
+  .adr dd { margin: 0; max-width: 70ch; }
+
+  .callout { border-left: 3px solid var(--risk); background: var(--risk-tint); padding: var(--s3) var(--s4); border-radius: 0 var(--r-control-md) var(--r-control-md) 0; }
+  .callout h3 { color: var(--risk); }
+  ol.steps { margin: 0; padding-left: var(--s6); display: grid; gap: var(--s2); max-width: 70ch; }
+
+  /* review form */
+  .review { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-surface); padding: var(--s6); display: grid; gap: var(--s6); }
+  fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+  legend { font-weight: 600; margin-bottom: var(--s2); padding: 0; }
+  .choice { display: flex; align-items: flex-start; gap: var(--s2); min-height: 44px; padding: var(--s2) var(--s3); border: 1px solid var(--border); border-radius: var(--r-control-md); cursor: pointer; }
+  .choice:has(input:checked) { border-color: var(--accent); background: var(--accent-tint); }
+  .choice input { margin: 4px 0 0; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+  .choice span small { display: block; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--lh-sm); }
+  label.field { display: grid; gap: var(--s2); font-weight: 600; }
+  textarea {
+    font: var(--text-base)/var(--lh-base) var(--font-ui); color: var(--text); background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: var(--r-control-md); padding: var(--s2) var(--s3);
+    min-height: calc(var(--lh-base) * 4 + var(--s2) * 2 + 2px); resize: vertical; font-weight: 400;
+  }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+  .hint { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+
+  /* fullscreen diagram */
+  dialog { width: min(96vw, 1600px); max-height: 92dvh; padding: 0; border: 1px solid var(--border); border-radius: var(--r-surface); background: var(--surface); color: var(--text); }
+  dialog::backdrop { background: rgb(25 27 27 / 0.5); }
+  dialog .fig-body { max-height: calc(92dvh - 49px); overflow: auto; }
+  dialog .fig-body svg { max-width: none; }
+
+  /* Mermaid node kinds, themed through tokens (see references/diagrams.md) */
+  .mermaid .node :is(rect, path, polygon, circle, ellipse) { stroke-width: 1.5px; }
+  .mermaid .node.k-actor :is(rect, path, polygon) { fill: var(--surface-sunken) !important; stroke: var(--border-strong) !important; }
+  .mermaid .node.k-service :is(rect, path, polygon) { fill: var(--surface) !important; stroke: var(--border-strong) !important; }
+  .mermaid .node.k-store :is(rect, path, polygon) { fill: var(--accent-tint) !important; stroke: var(--accent) !important; }
+  .mermaid .node.k-queue :is(rect, path, polygon) { fill: var(--surface) !important; stroke: var(--accent) !important; }
+  .mermaid .node.k-external :is(rect, path, polygon) { fill: var(--surface) !important; stroke: var(--text-muted) !important; stroke-dasharray: 5 3; }
+  .mermaid .node.k-new :is(rect, path, polygon) { fill: var(--added-tint) !important; stroke: var(--added) !important; stroke-width: 2px; }
+  .mermaid .node.k-removed :is(rect, path, polygon) { fill: var(--removed-tint) !important; stroke: var(--removed) !important; stroke-dasharray: 4 3; }
+  .mermaid .node.k-removed .nodeLabel { text-decoration: line-through; }
+  .mermaid .cluster rect { fill: transparent !important; stroke: var(--risk) !important; stroke-dasharray: 6 4; stroke-width: 1.5px; rx: 8; ry: 8; }
+  .mermaid .cluster-label .nodeLabel, .mermaid .cluster text { fill: var(--risk) !important; color: var(--risk) !important; font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  @media print {
+    .toc, .fig-head .btn, .review .actions { display: none; }
+    .layout { display: block; }
+    figure.diagram, .adr, .summary { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span class="status">Awaiting your review</span>
+      <!-- FILL: date, revision, project -->
+      <span>Revision 1</span><span>2026-11-24</span><span class="mono">orders-api</span>
+    </div>
+    <!-- FILL: title -->
+    <h1>Webhook delivery for order events</h1>
+    <!-- FILL: one sentence: what this design is for -->
+    <p class="lede">How merchants receive signed, retried webhook notifications when orders change, without slowing down checkout.</p>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Sections">
+      <ol>
+        <li><a href="#summary">Summary</a></li>
+        <li><a href="#context">System context</a></li>
+        <li><a href="#containers">Components &amp; trust</a></li>
+        <li><a href="#security">Security &amp; privacy</a></li>
+        <li><a href="#hot-path">Hot path</a></li>
+        <li><a href="#data">Data ownership</a></li>
+        <li><a href="#options">Options</a></li>
+        <li><a href="#decisions">Decisions</a></li>
+        <li><a href="#migration">Migration</a></li>
+        <li><a href="#review">Your review</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <!-- ============================================================ SUMMARY -->
+      <section id="summary" aria-labelledby="summary-h">
+        <h2 id="summary-h">Summary</h2>
+        <div class="summary">
+          <!-- FILL: the recommendation in 1–3 sentences. Concrete, no hedging. -->
+          <p class="decision">Add a <strong>delivery worker inside the existing monolith</strong>, fed by a transactional outbox table. Checkout writes the event in the same transaction as the order; the worker signs and delivers it with retries. No new service, no new datastore.</p>
+          <!-- FILL: the numbers that matter (load, latency budget, cost, effort) -->
+          <dl class="facts">
+            <div><dt>Peak events</dt><dd>120 / s</dd></div>
+            <div><dt>Checkout overhead</dt><dd>+1 insert, &lt;2 ms</dd></div>
+            <div><dt>Delivery p99</dt><dd>&lt; 5 s</dd></div>
+            <div><dt>New infrastructure</dt><dd>None</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ============================================================ CONTEXT -->
+      <section id="context" aria-labelledby="context-h">
+        <h2 id="context-h">System context</h2>
+        <p class="lede">Who and what talks to the system. Read this first to check nothing is missing.</p>
+        <ul class="legend" aria-label="Diagram legend">
+          <li><span class="sw actor"></span>Person</li>
+          <li><span class="sw"></span>Our component</li>
+          <li><span class="sw store"></span>Datastore / queue</li>
+          <li><span class="sw external"></span>External system</li>
+          <li><span class="sw new"></span>New in this design</li>
+          <li><span class="sw removed"></span>Removed</li>
+          <li><span class="sw boundary"></span>Trust boundary</li>
+          <li><span class="sw async"></span>Async</li>
+        </ul>
+        <figure class="diagram">
+          <div class="fig-head">
+            <figcaption><strong>Context.</strong> Users, external systems, and our system as one box.</figcaption>
+            <button class="btn" type="button" data-expand>Expand</button>
+          </div>
+          <div class="fig-body">
+<!-- FILL: context diagram -->
+<pre class="mermaid">
+flowchart LR
+  shopper([Shopper]):::k-actor --> app[Orders platform]:::k-service
+  merchant([Merchant admin]):::k-actor --> app
+  app -- "HTTPS POST, signed" --> mhook{{Merchant webhook endpoint}}:::k-external
+  app --> psp{{Payment provider}}:::k-external
+</pre>
+          </div>
+        </figure>
+      </section>
+
+      <!-- ============================================================ CONTAINERS -->
+      <section id="containers" aria-labelledby="containers-h">
+        <h2 id="containers-h">Components and trust boundaries</h2>
+        <p class="lede">What runs where, who owns which data, and every arrow that crosses a trust boundary.</p>
+        <figure class="diagram">
+          <div class="fig-head">
+            <figcaption><strong>Components.</strong> Dashed orange boxes are trust boundaries; arrows crossing them are authenticated and validated on the receiving side.</figcaption>
+            <button class="btn" type="button" data-expand>Expand</button>
+          </div>
+          <div class="fig-body">
+<!-- FILL: container/component diagram with trust boundaries as subgraphs -->
+<pre class="mermaid">
+flowchart LR
+  shopper([Shopper]):::k-actor
+  subgraph internet["Public internet"]
+    mhook{{Merchant endpoint}}:::k-external
+  end
+  subgraph vpc["Private network"]
+    api[Orders API]:::k-service
+    db[(Postgres: orders + outbox)]:::k-store
+    worker[Delivery worker]:::k-new
+    secrets[(Signing keys, KMS)]:::k-store
+  end
+  shopper -- "HTTPS, session auth" --> api
+  api -- "1 txn: order + outbox row" --> db
+  worker -. "poll, FOR UPDATE SKIP LOCKED" .-> db
+  worker -- "sign HMAC-SHA256" --> secrets
+  worker -- "HTTPS POST, 5 s timeout" --> mhook
+</pre>
+          </div>
+          <p class="fig-note">The worker is a separate process from the same codebase and deploy. It has no inbound network access.</p>
+        </figure>
+      </section>
+
+      <!-- ============================================================ SECURITY & PRIVACY -->
+      <section id="security" aria-labelledby="security-h">
+        <h2 id="security-h">Security and privacy</h2>
+        <p class="lede">What personal and sensitive data exists, why, where every copy lives, how it's deleted, and how each trust boundary is defended. Designed in, not bolted on.</p>
+
+        <h3>Data inventory</h3>
+        <!-- FILL: one row per data category. Data with no purpose is not collected. -->
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Class</th><th>Purpose</th><th>Stored and copied in</th><th>Who can read</th><th>Retention and deletion</th></tr></thead>
+            <tbody>
+              <tr><td>Shopper email, shipping address</td><td>Personal</td><td>Deliver orders, send receipts</td><td>Postgres <code>orders</code>; outbox payload; backups</td><td>Orders API; support role (audited)</td><td>Order + 2 years, then deleted; backups expire after 35 days</td></tr>
+              <tr><td>Card data</td><td>Sensitive</td><td>Payment</td><td>Never stored: tokenized by the payment provider</td><td>Payment provider only</td><td>Not held</td></tr>
+              <tr><td>Request logs</td><td>Internal</td><td>Debugging, abuse detection</td><td>Log store</td><td>On-call engineers</td><td>14 days; user IDs pseudonymized, no email or address</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Threats and controls per boundary</h3>
+        <!-- FILL: STRIDE for security, LINDDUN for privacy. Every row names how the control is verified. -->
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Boundary</th><th>Threat</th><th>Control</th><th>Verified by</th></tr></thead>
+            <tbody>
+              <tr><td>Internet &rarr; Orders API</td><td>Elevation of privilege: shopper reads another shopper's order (IDOR)</td><td>Every query scoped by owner; Postgres row-level security as a second layer</td><td>Authorization matrix tests</td></tr>
+              <tr><td>Worker &rarr; merchant endpoint</td><td>SSRF: merchant sets endpoint to an internal address</td><td>Egress proxy with allowlist; private IP ranges blocked after DNS resolution</td><td>Test with <code>169.254.169.254</code> and DNS rebinding</td></tr>
+              <tr><td>Worker &rarr; merchant endpoint</td><td>Disclosure (privacy): payload sends more shopper data than the merchant needs</td><td>Payload schema limited to order ID, items, and shipping city</td><td>Schema test fails on extra fields</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Data leaving the system</h3>
+        <!-- FILL: every third party that receives data. Delete rows that don't apply. -->
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Recipient</th><th>What is sent</th><th>Why</th><th>Minimized how</th></tr></thead>
+            <tbody>
+              <tr><td>Payment provider</td><td>Card details (entered in their hosted form)</td><td>Payment</td><td>Card data never touches our servers</td></tr>
+              <tr><td>Error tracker</td><td>Stack traces</td><td>Debugging</td><td>PII scrubbing on; request bodies not sent</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ HOT PATH -->
+      <section id="hot-path" aria-labelledby="hot-h">
+        <h2 id="hot-h">Hot path</h2>
+        <p class="lede">The request that matters most, step by step, with its latency budget.</p>
+        <div class="stack">
+          <figure class="diagram">
+            <div class="fig-head">
+              <figcaption><strong>Checkout, then delivery.</strong> Everything after the commit is off the user's path.</figcaption>
+              <button class="btn" type="button" data-expand>Expand</button>
+            </div>
+            <div class="fig-body">
+<!-- FILL: sequence diagram of the critical path -->
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor S as Shopper
+  participant A as Orders API
+  participant D as Postgres
+  participant W as Delivery worker
+  participant M as Merchant endpoint
+  S->>A: POST /checkout
+  A->>D: one transaction: insert order + outbox row
+  A-->>S: 201 Created
+  Note over S,A: User-facing path ends here
+  loop every 250 ms
+    W->>D: claim ≤ 100 rows (SKIP LOCKED)
+  end
+  W->>M: POST event (signed, 5 s timeout)
+  alt 2xx
+    W->>D: mark delivered
+  else error or timeout
+    W->>D: schedule retry (exp. backoff + jitter, max 24 h)
+  end
+</pre>
+            </div>
+          </figure>
+          <!-- FILL: latency budget for the hot path; it must add up to the target -->
+          <div class="table-wrap">
+            <table>
+              <caption class="hint" style="text-align:left;padding:var(--s3) var(--s4)">Checkout latency budget, target p99 300 ms</caption>
+              <thead><tr><th>Hop</th><th class="num">p50</th><th class="num">p99</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td>Auth + validation</td><td class="num">8 ms</td><td class="num">20 ms</td><td>Unchanged</td></tr>
+                <tr><td>Payment provider</td><td class="num">140 ms</td><td class="num">220 ms</td><td>Unchanged; dominant cost</td></tr>
+                <tr><td>Order + outbox transaction</td><td class="num">6 ms</td><td class="num">18 ms</td><td>+1 insert vs. today</td></tr>
+                <tr><td><strong>Total</strong></td><td class="num"><strong>154 ms</strong></td><td class="num"><strong>258 ms</strong></td><td>42 ms headroom</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ DATA -->
+      <section id="data" aria-labelledby="data-h">
+        <h2 id="data-h">Data ownership</h2>
+        <p class="lede">One writer per field. When two components write the same table, say which fields each one owns; two writers of the same field is a design bug.</p>
+        <!-- FILL: one row per entity/table -->
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Source of truth</th><th>Writer</th><th>Readers</th><th>Sensitivity</th></tr></thead>
+            <tbody>
+              <tr><td><code>orders</code></td><td>Postgres</td><td>Orders API</td><td>API, worker (read-only)</td><td>PII</td></tr>
+              <tr><td><code>webhook_outbox</code></td><td>Postgres</td><td>API inserts rows; worker owns only <code>status</code></td><td>Worker, admin UI</td><td>Contains order payload</td></tr>
+              <tr><td>Signing keys</td><td>KMS</td><td>Ops (rotation)</td><td>Worker only</td><td>Secret</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ OPTIONS -->
+      <section id="options" aria-labelledby="options-h">
+        <h2 id="options-h">Options considered</h2>
+        <p class="lede">The same problem drawn each way, so the difference is visible. The recommended option is outlined.</p>
+        <!-- FILL: one figure per option (2–3). Mark the recommended one with class "recommended". -->
+        <div class="options">
+          <figure class="diagram option recommended">
+            <div class="fig-head">
+              <figcaption><strong>A. Outbox + in-monolith worker</strong> <span class="tag">Recommended</span></figcaption>
+              <button class="btn" type="button" data-expand>Expand</button>
+            </div>
+            <div class="fig-body">
+<pre class="mermaid">
+flowchart TB
+  api[Orders API]:::k-service --> db[(Postgres + outbox)]:::k-store
+  w[Worker]:::k-new -.-> db
+  w --> m{{Merchant}}:::k-external
+</pre>
+            </div>
+            <p class="fig-note">No new infrastructure. Exactly-once enqueue (same transaction). Throughput ceiling ~2k events/s per worker, 16× peak.</p>
+          </figure>
+          <figure class="diagram option">
+            <div class="fig-head">
+              <figcaption><strong>B. Message broker + webhook service</strong></figcaption>
+              <button class="btn" type="button" data-expand>Expand</button>
+            </div>
+            <div class="fig-body">
+<pre class="mermaid">
+flowchart TB
+  api[Orders API]:::k-service --> db[(Postgres)]:::k-store
+  api -- "publish after commit" --> q[[Kafka]]:::k-new
+  q -.-> svc[Webhook service]:::k-new
+  svc --> m{{Merchant}}:::k-external
+</pre>
+            </div>
+            <p class="fig-note">Dual write: an event can be lost if the publish fails after commit. Adds a broker and a service to run.</p>
+          </figure>
+        </div>
+        <!-- FILL: comparison on the criteria from the skill -->
+        <div class="table-wrap" style="margin-top:var(--s6)">
+          <table>
+            <thead><tr><th>Criterion</th><th>A. Outbox + worker</th><th>B. Broker + service</th></tr></thead>
+            <tbody>
+              <tr><td>Correctness</td><td class="win">No lost events</td><td class="lose">Dual-write gap</td></tr>
+              <tr><td>Operability</td><td class="win">Nothing new to run</td><td>Broker + service on-call</td></tr>
+              <tr><td>Scale ceiling</td><td>~2k/s, then partition</td><td class="win">Very high</td></tr>
+              <tr><td>Security surface</td><td class="win">No new boundary</td><td>New service credentials, broker ACLs</td></tr>
+              <tr><td>Reversibility</td><td class="win">Drop the table</td><td>Hard: consumers depend on topics</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ DECISIONS -->
+      <section id="decisions" aria-labelledby="decisions-h">
+        <h2 id="decisions-h">Decisions</h2>
+        <p class="lede">Each key decision as a short ADR. These are what you're approving.</p>
+        <div class="stack">
+          <!-- FILL: one .adr per key decision -->
+          <article class="adr">
+            <h3>Use a transactional outbox, not publish-after-commit</h3>
+            <dl>
+              <dt>Context</dt><dd>Merchants reconcile from webhooks; a lost event means a wrong ledger.</dd>
+              <dt>Decision</dt><dd>Insert the event into <code>webhook_outbox</code> in the order transaction. A worker delivers it.</dd>
+              <dt>Performance</dt><dd>+1 indexed insert on checkout (&lt;2 ms p99). Worker batch of 100 every 250 ms covers 400/s per instance.</dd>
+              <dt>Security</dt><dd>Payloads signed with HMAC-SHA256, per-merchant key from KMS, timestamp in signature to block replay. Worker egress only.</dd>
+              <dt>Alternatives</dt><dd>Broker with publish-after-commit (lost events); synchronous delivery in checkout (merchant latency becomes our latency).</dd>
+              <dt>Consequences</dt><dd>Outbox table needs pruning (delivered rows deleted after 7 days). Delivery order is per-order, not global.</dd>
+            </dl>
+          </article>
+          <aside class="callout">
+            <!-- FILL: open questions that need the user's input; delete if none -->
+            <h3>Open questions for you</h3>
+            <ol class="steps">
+              <li>Is 24 hours of retries enough before we mark a delivery as failed and alert the merchant?</li>
+              <li>Do merchants need global event ordering, or is per-order ordering enough?</li>
+            </ol>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============================================================ MIGRATION -->
+      <section id="migration" aria-labelledby="migration-h">
+        <h2 id="migration-h">Migration</h2>
+        <p class="lede">Every step ships on its own and can be rolled back.</p>
+        <!-- FILL: incremental steps; add a before/after diagram pair for refactors -->
+        <ol class="steps">
+          <li>Add <code>webhook_outbox</code> table and the signing-key lookup. No behavior change.</li>
+          <li>Write outbox rows on checkout behind a flag; worker runs in dry-run mode, logging what it would send.</li>
+          <li>Enable delivery for internal test merchants; compare against expectations.</li>
+          <li>Enable for all merchants; add the admin view of delivery attempts.</li>
+        </ol>
+      </section>
+
+      <!-- ============================================================ REVIEW -->
+      <section id="review" aria-labelledby="review-h">
+        <h2 id="review-h">Your review</h2>
+        <p class="lede">Pick a verdict, add notes, then copy the result into the chat. Nothing is built until you approve.</p>
+        <form class="review" id="review-form">
+          <fieldset>
+            <legend>Verdict</legend>
+            <label class="choice"><input type="radio" name="verdict" value="Approved as drawn" checked><span>Approve<small>Build it as shown.</small></span></label>
+            <label class="choice"><input type="radio" name="verdict" value="Approved with changes"><span>Approve with changes<small>Build it after the changes in my notes.</small></span></label>
+            <label class="choice"><input type="radio" name="verdict" value="Prefer a different option"><span>Different option<small>I prefer another option; see notes.</small></span></label>
+            <label class="choice"><input type="radio" name="verdict" value="Rework needed"><span>Rework<small>Something fundamental is off; redraw it.</small></span></label>
+          </fieldset>
+          <label class="field">Notes, answers to open questions
+            <textarea id="notes" placeholder="e.g. Option A is fine. 48h of retries, not 24. Per-order ordering is enough."></textarea>
+          </label>
+          <div class="actions">
+            <button class="btn-primary btn" type="submit">Copy review</button>
+            <span class="hint" id="copy-status" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="viewer" aria-label="Expanded diagram">
+  <div class="fig-head">
+    <figcaption id="viewer-title"></figcaption>
+    <button class="btn" type="button" id="viewer-close">Close</button>
+  </div>
+  <div class="fig-body" id="viewer-body"></div>
+</dialog>
+
+<script type="module">
+  // Keep the original Mermaid sources so diagrams can re-render when the color scheme changes.
+  const blocks = [...document.querySelectorAll("pre.mermaid")];
+  blocks.forEach((b) => (b.dataset.src = b.textContent));
+
+  // Mermaid's own colors come from the page tokens, so diagrams match the page in both themes.
+  const v = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const themeVariables = () => ({
+    fontFamily: v("--font-ui"),
+    fontSize: "14px",
+    background: v("--surface"),
+    primaryColor: v("--surface"),
+    primaryTextColor: v("--text"),
+    primaryBorderColor: v("--border-strong"),
+    secondaryColor: v("--surface-sunken"),
+    tertiaryColor: v("--surface"),
+    lineColor: v("--text-muted"),
+    textColor: v("--text"),
+    mainBkg: v("--surface"),
+    nodeBorder: v("--border-strong"),
+    clusterBkg: "transparent",
+    clusterBorder: v("--risk"),
+    edgeLabelBackground: v("--surface"),
+    actorBkg: v("--surface"),
+    actorBorder: v("--border-strong"),
+    actorTextColor: v("--text"),
+    actorLineColor: v("--border"),
+    signalColor: v("--text-muted"),
+    signalTextColor: v("--text"),
+    labelBoxBkgColor: v("--surface-sunken"),
+    labelBoxBorderColor: v("--border"),
+    labelTextColor: v("--text"),
+    loopTextColor: v("--text-muted"),
+    noteBkgColor: v("--risk-tint"),
+    noteBorderColor: v("--risk"),
+    noteTextColor: v("--text"),
+    activationBkgColor: v("--accent-tint"),
+    activationBorderColor: v("--accent"),
+    sequenceNumberColor: v("--on-accent"),
+  });
+
+  let mermaid;
+  async function render() {
+    blocks.forEach((b) => {
+      b.removeAttribute("data-processed");
+      b.textContent = b.dataset.src;
+    });
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "base",
+      themeVariables: themeVariables(),
+      flowchart: { curve: "basis", padding: 12, nodeSpacing: 40, rankSpacing: 56, htmlLabels: true },
+      sequence: { mirrorActors: false, actorMargin: 48, messageMargin: 32, boxMargin: 8, noteMargin: 8 },
+    });
+    // Render one at a time so a syntax error in one diagram doesn't blank the rest,
+    // and show the error in place so it gets fixed instead of silently missing.
+    document.querySelectorAll(".render-error").forEach((e) => e.remove());
+    for (const b of blocks) {
+      try {
+        await mermaid.run({ nodes: [b] });
+      } catch (err) {
+        const msg = document.createElement("p");
+        msg.className = "render-error";
+        msg.textContent = "Diagram error: " + (err?.message || err);
+        b.before(msg);
+      }
+    }
+  }
+
+  try {
+    ({ default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs"));
+    await render();
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  } catch {
+    document.querySelectorAll(".fig-body").forEach((el) => {
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.textContent = "Diagram renderer couldn't load (offline?). The Mermaid source is shown instead.";
+      el.prepend(note);
+    });
+  }
+
+  // Expand a diagram into a large, scrollable view.
+  const dlg = document.getElementById("viewer");
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-expand]");
+    if (!btn) return;
+    const fig = btn.closest("figure");
+    document.getElementById("viewer-title").innerHTML = fig.querySelector("figcaption").innerHTML;
+    const body = document.getElementById("viewer-body");
+    body.replaceChildren(fig.querySelector(".fig-body").firstElementChild.cloneNode(true));
+    dlg.showModal();
+  });
+  document.getElementById("viewer-close").addEventListener("click", () => dlg.close());
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+
+  // Turn the review form into text the user pastes back into the chat.
+  document.getElementById("review-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const verdict = new FormData(e.target).get("verdict");
+    const notes = document.getElementById("notes").value.trim();
+    const text = `Architecture review: ${document.querySelector("h1").textContent.trim()}\nVerdict: ${verdict}${notes ? `\nNotes:\n${notes}` : ""}`;
+    const status = document.getElementById("copy-status");
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = "Copied. Paste it into the chat.";
+    } catch {
+      status.textContent = "Couldn't access the clipboard. Select and copy your notes manually.";
+    }
+  });
+</script>
+</body>
+</html>
